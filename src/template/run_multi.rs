@@ -55,7 +55,7 @@ pub enum Error {
 
 impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
-        Error::IO(e)
+        Self::IO(e)
     }
 }
 
@@ -174,7 +174,7 @@ pub mod child_commands {
             .split(" samples)")
             .next()?
             .split('(')
-            .last()?
+            .next_back()?
             .split('@')
             .next()?
             .trim();
