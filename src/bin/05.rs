@@ -1,11 +1,12 @@
-use std::iter::empty;
+use std::cmp::Ordering;
+use std::iter::{empty, successors};
 use std::str::FromStr;
 
 advent_of_code::solution!(5);
 
 const GRID_SIZE: usize = 1000;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct Point {
     x: usize,
     y: usize,
@@ -18,25 +19,62 @@ struct Vent {
 }
 
 impl Vent {
-    fn grid_aligned_segments(&self) -> Box<dyn Iterator<Item = Point> + '_> {
-        if self.start.y == self.finish.y {
-            let (x1, x2) = if self.start.x > self.finish.x {
-                (self.finish.x, self.start.x)
-            } else {
-                (self.start.x, self.finish.x)
-            };
-            return Box::new((x1..=x2).map(move |x| Point { x, y: self.start.y }));
-        }
-        if self.start.x == self.finish.x {
-            let (y1, y2) = if self.start.y > self.finish.y {
-                (self.finish.y, self.start.y)
-            } else {
-                (self.start.y, self.finish.y)
-            };
-            return Box::new((y1..=y2).map(move |y| Point { x: self.start.x, y }));
-        }
+    fn get_slope(&self) -> (Ordering, Ordering) {
+        (
+            self.finish.x.cmp(&self.start.x),
+            self.finish.y.cmp(&self.start.y),
+        )
+    }
 
-        Box::new(empty())
+    fn get_points(&self, allow_diagonal: bool) -> Box<dyn Iterator<Item = Point> + '_> {
+        let (slope_x, slope_y) = self.get_slope();
+        let parallel_to_grid = slope_x == Ordering::Equal || slope_y == Ordering::Equal;
+
+        if allow_diagonal || parallel_to_grid {
+            Box::new(successors(Some(self.start), move |prev| {
+                let x = match slope_x {
+                    Ordering::Greater => {
+                        let next_x = prev.x + 1;
+                        if next_x > self.finish.x {
+                            None
+                        } else {
+                            Some(next_x)
+                        }
+                    }
+                    Ordering::Less => {
+                        let next_x = prev.x.checked_sub(1)?;
+                        if next_x < self.finish.x {
+                            None
+                        } else {
+                            Some(next_x)
+                        }
+                    }
+                    Ordering::Equal => Some(prev.x),
+                }?;
+                let y = match slope_y {
+                    Ordering::Greater => {
+                        let next_y = prev.y + 1;
+                        if next_y > self.finish.y {
+                            None
+                        } else {
+                            Some(next_y)
+                        }
+                    }
+                    Ordering::Less => {
+                        let next_y = prev.y.checked_sub(1)?;
+                        if next_y < self.finish.y {
+                            None
+                        } else {
+                            Some(next_y)
+                        }
+                    }
+                    Ordering::Equal => Some(prev.y),
+                }?;
+                Some(Point { x, y })
+            }))
+        } else {
+            Box::new(empty())
+        }
     }
 }
 
@@ -46,11 +84,11 @@ struct VentSystem {
 }
 
 impl VentSystem {
-    fn count_overlapping_points(&self) -> usize {
+    fn count_overlapping_points(&self, allow_diagonal: bool) -> usize {
         let mut visited: Vec<u8> = vec![0; GRID_SIZE * GRID_SIZE];
 
         for vent in &self.vents {
-            for point in vent.grid_aligned_segments() {
+            for point in vent.get_points(allow_diagonal) {
                 let ix = (point.y * GRID_SIZE) + point.x;
                 visited[ix] = visited[ix].saturating_add(1);
             }
@@ -110,13 +148,12 @@ impl FromStr for VentSystem {
 
 #[must_use]
 pub fn part_one(input: &str) -> Option<usize> {
-    VentSystem::from_str(input).map_or(None, |system| Some(system.count_overlapping_points()))
+    VentSystem::from_str(input).map_or(None, |system| Some(system.count_overlapping_points(false)))
 }
 
 #[must_use]
-#[allow(clippy::missing_const_for_fn)]
-pub fn part_two(_input: &str) -> Option<u64> {
-    None
+pub fn part_two(input: &str) -> Option<usize> {
+    VentSystem::from_str(input).map_or(None, |system| Some(system.count_overlapping_points(true)))
 }
 
 #[cfg(test)]
@@ -179,48 +216,48 @@ mod tests {
     }
 
     #[test]
-    fn test_diagonal_has_no_grid_aligned_segments() {
+    fn test_points_diagonal_not_allowed() {
         let diagonal = Vent {
             start: Point { x: 0, y: 0 },
             finish: Point { x: 8, y: 8 },
         };
-        let mut segments = diagonal.grid_aligned_segments();
-        assert_eq!(segments.next(), None);
+        let mut points = diagonal.get_points(false);
+        assert_eq!(points.next(), None);
     }
 
     #[test]
-    fn test_horizontal_grid_aligned_segments() {
+    fn test_points_horizontal() {
         let horizontal = Vent {
             start: Point { x: 2, y: 4 },
             finish: Point { x: 5, y: 4 },
         };
-        let mut segments = horizontal.grid_aligned_segments();
-        assert_eq!(segments.next(), Some(Point { x: 2, y: 4 }));
-        assert_eq!(segments.next(), Some(Point { x: 3, y: 4 }));
-        assert_eq!(segments.next(), Some(Point { x: 4, y: 4 }));
-        assert_eq!(segments.next(), Some(Point { x: 5, y: 4 }));
-        assert_eq!(segments.next(), None);
+        let mut points = horizontal.get_points(false);
+        assert_eq!(points.next(), Some(Point { x: 2, y: 4 }));
+        assert_eq!(points.next(), Some(Point { x: 3, y: 4 }));
+        assert_eq!(points.next(), Some(Point { x: 4, y: 4 }));
+        assert_eq!(points.next(), Some(Point { x: 5, y: 4 }));
+        assert_eq!(points.next(), None);
     }
 
     #[test]
-    fn test_vertical_grid_aligned_segments() {
+    fn test_points_vertical() {
         let vertical = Vent {
             start: Point { x: 7, y: 0 },
             finish: Point { x: 7, y: 4 },
         };
-        let mut segments = vertical.grid_aligned_segments();
-        assert_eq!(segments.next(), Some(Point { x: 7, y: 0 }));
-        assert_eq!(segments.next(), Some(Point { x: 7, y: 1 }));
-        assert_eq!(segments.next(), Some(Point { x: 7, y: 2 }));
-        assert_eq!(segments.next(), Some(Point { x: 7, y: 3 }));
-        assert_eq!(segments.next(), Some(Point { x: 7, y: 4 }));
-        assert_eq!(segments.next(), None);
+        let mut points = vertical.get_points(false);
+        assert_eq!(points.next(), Some(Point { x: 7, y: 0 }));
+        assert_eq!(points.next(), Some(Point { x: 7, y: 1 }));
+        assert_eq!(points.next(), Some(Point { x: 7, y: 2 }));
+        assert_eq!(points.next(), Some(Point { x: 7, y: 3 }));
+        assert_eq!(points.next(), Some(Point { x: 7, y: 4 }));
+        assert_eq!(points.next(), None);
     }
 
     #[test]
     fn test_count_overlapping_points() {
         let system = example_vent_system();
-        assert_eq!(system.count_overlapping_points(), 5);
+        assert_eq!(system.count_overlapping_points(false), 5);
     }
 
     #[test]
@@ -230,8 +267,54 @@ mod tests {
     }
 
     #[test]
+    fn test_vent_slope() {
+        let vertical = Vent {
+            start: Point { x: 7, y: 0 },
+            finish: Point { x: 7, y: 4 },
+        };
+        assert_eq!(vertical.get_slope(), (Ordering::Equal, Ordering::Greater));
+
+        let horizontal = Vent {
+            start: Point { x: 2, y: 3 },
+            finish: Point { x: 6, y: 3 },
+        };
+        assert_eq!(horizontal.get_slope(), (Ordering::Greater, Ordering::Equal));
+
+        let diagonal = Vent {
+            start: Point { x: 4, y: 4 },
+            finish: Point { x: 6, y: 2 },
+        };
+        assert_eq!(diagonal.get_slope(), (Ordering::Greater, Ordering::Less));
+    }
+
+    #[test]
+    fn test_points_diagonal() {
+        let diagonal = Vent {
+            start: Point { x: 0, y: 0 },
+            finish: Point { x: 8, y: 8 },
+        };
+        let mut points = diagonal.get_points(true);
+        assert_eq!(points.next(), Some(Point { x: 0, y: 0 }));
+        assert_eq!(points.next(), Some(Point { x: 1, y: 1 }));
+        assert_eq!(points.next(), Some(Point { x: 2, y: 2 }));
+        assert_eq!(points.next(), Some(Point { x: 3, y: 3 }));
+        assert_eq!(points.next(), Some(Point { x: 4, y: 4 }));
+        assert_eq!(points.next(), Some(Point { x: 5, y: 5 }));
+        assert_eq!(points.next(), Some(Point { x: 6, y: 6 }));
+        assert_eq!(points.next(), Some(Point { x: 7, y: 7 }));
+        assert_eq!(points.next(), Some(Point { x: 8, y: 8 }));
+        assert_eq!(points.next(), None);
+    }
+
+    #[test]
+    fn test_count_overlapping_points_with_diagonals() {
+        let system = example_vent_system();
+        assert_eq!(system.count_overlapping_points(true), 12);
+    }
+
+    #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(12));
     }
 }
