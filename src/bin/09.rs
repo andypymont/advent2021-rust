@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::str::FromStr;
 
 advent_of_code::solution!(9);
@@ -33,7 +34,7 @@ impl Direction {
                 } else {
                     None
                 }
-            },
+            }
             Self::East | Self::West => Some(row),
         }?;
         let col = match self {
@@ -44,7 +45,7 @@ impl Direction {
                 } else {
                     None
                 }
-            },
+            }
             Self::West => col.checked_sub(1),
             Self::North | Self::South => Some(col),
         }?;
@@ -54,29 +55,83 @@ impl Direction {
 }
 
 #[derive(Debug, PartialEq)]
+struct LowPoint {
+    position: usize,
+    height: u32,
+}
+
+#[derive(Debug, PartialEq)]
 struct CaveMap {
     heights: Vec<u32>,
 }
 
 impl CaveMap {
+    fn basin_size(&self, low_point: LowPoint) -> u32 {
+        let mut visited = [false; GRID_SIZE * GRID_SIZE];
+        let mut queue = VecDeque::new();
+        queue.push_back(low_point);
+
+        while let Some(point) = queue.pop_front() {
+            visited[point.position] = true;
+
+            for neighbour in Self::neighbours(point.position) {
+                let Some(height) = self.heights.get(neighbour) else {
+                    continue;
+                };
+                if !visited[neighbour] && *height < 9 && *height > point.height {
+                    queue.push_back(LowPoint {
+                        position: neighbour,
+                        height: *height,
+                    });
+                }
+            }
+        }
+
+        visited.iter().map(|v| u32::from(*v)).sum()
+    }
+
     fn neighbours(origin: usize) -> impl Iterator<Item = usize> {
         COMPASS.iter().filter_map(move |dir| dir.move_from(origin))
     }
 
-    fn find_low_points(&self) -> impl Iterator<Item = u32> + '_ {
-        self.heights.iter().enumerate().filter_map(|(point, height)| {
-            if Self::neighbours(point)
-                   .filter_map(|pt| self.heights.get(pt))
-                   .all(|neighbour| neighbour > height) {
-                Some(height).copied()
-            } else {
-                None
-            }
-        })
+    fn find_low_points(&self) -> impl Iterator<Item = LowPoint> + '_ {
+        self.heights
+            .iter()
+            .enumerate()
+            .filter_map(|(point, height)| {
+                if Self::neighbours(point)
+                    .filter_map(|pt| self.heights.get(pt))
+                    .all(|neighbour| neighbour > height)
+                {
+                    Some(LowPoint {
+                        position: point,
+                        height: *height,
+                    })
+                } else {
+                    None
+                }
+            })
+    }
+
+    fn three_largest_basins(&self) -> (u32, u32, u32) {
+        self.find_low_points()
+            .map(|pt| self.basin_size(pt))
+            .fold((0, 0, 0), |(a, b, c), d| {
+                if d >= a {
+                    return (d, a, b);
+                }
+                if d >= b {
+                    return (a, d, b);
+                }
+                if d >= c {
+                    return (a, b, d);
+                }
+                (a, b, c)
+            })
     }
 
     fn total_low_point_risk(&self) -> u32 {
-        self.find_low_points().map(|lp| lp + 1).sum()
+        self.find_low_points().map(|lp| lp.height + 1).sum()
     }
 }
 
@@ -102,13 +157,17 @@ impl FromStr for CaveMap {
 
 #[must_use]
 pub fn part_one(input: &str) -> Option<u32> {
-    CaveMap::from_str(input).ok().map(|cave| cave.total_low_point_risk())
+    CaveMap::from_str(input)
+        .ok()
+        .map(|cave| cave.total_low_point_risk())
 }
 
 #[must_use]
-#[allow(clippy::missing_const_for_fn)]
-pub fn part_two(_input: &str) -> Option<u64> {
-    None
+pub fn part_two(input: &str) -> Option<u32> {
+    CaveMap::from_str(input).ok().map(|cave| {
+        let (a, b, c) = cave.three_largest_basins();
+        a * b * c
+    })
 }
 
 #[cfg(test)]
@@ -118,11 +177,8 @@ mod tests {
     fn example_cave_map() -> CaveMap {
         CaveMap {
             heights: vec![
-                2, 1, 9, 9, 9, 4, 3, 2, 1, 0,
-                3, 9, 8, 7, 8, 9, 4, 9, 2, 1,
-                9, 8, 5, 6, 7, 8, 9, 8, 9, 2,
-                8, 7, 6, 7, 8, 9, 6, 7, 8, 9,
-                9, 8, 9, 9, 9, 6, 5, 6, 7, 8,
+                2, 1, 9, 9, 9, 4, 3, 2, 1, 0, 3, 9, 8, 7, 8, 9, 4, 9, 2, 1, 9, 8, 5, 6, 7, 8, 9, 8,
+                9, 2, 8, 7, 6, 7, 8, 9, 6, 7, 8, 9, 9, 8, 9, 9, 9, 6, 5, 6, 7, 8,
             ],
         }
     }
@@ -158,10 +214,34 @@ mod tests {
     fn test_find_low_points() {
         let map = example_cave_map();
         let mut low = map.find_low_points();
-        assert_eq!(low.next(), Some(1));
-        assert_eq!(low.next(), Some(0));
-        assert_eq!(low.next(), Some(5));
-        assert_eq!(low.next(), Some(5));
+        assert_eq!(
+            low.next(),
+            Some(LowPoint {
+                position: position(0, 1),
+                height: 1
+            })
+        );
+        assert_eq!(
+            low.next(),
+            Some(LowPoint {
+                position: position(0, 9),
+                height: 0
+            })
+        );
+        assert_eq!(
+            low.next(),
+            Some(LowPoint {
+                position: position(2, 2),
+                height: 5
+            })
+        );
+        assert_eq!(
+            low.next(),
+            Some(LowPoint {
+                position: position(4, 6),
+                height: 5
+            })
+        );
         assert_eq!(low.next(), None);
     }
 
@@ -177,8 +257,47 @@ mod tests {
     }
 
     #[test]
+    fn test_basin_size() {
+        let map = example_cave_map();
+        assert_eq!(
+            map.basin_size(LowPoint {
+                position: position(0, 1),
+                height: 1
+            }),
+            3
+        );
+        assert_eq!(
+            map.basin_size(LowPoint {
+                position: position(0, 9),
+                height: 0
+            }),
+            9
+        );
+        assert_eq!(
+            map.basin_size(LowPoint {
+                position: position(2, 2),
+                height: 5
+            }),
+            14
+        );
+        assert_eq!(
+            map.basin_size(LowPoint {
+                position: position(4, 6),
+                height: 5
+            }),
+            9
+        );
+    }
+
+    #[test]
+    fn test_three_largest_basins() {
+        let map = example_cave_map();
+        assert_eq!(map.three_largest_basins(), (14, 9, 9));
+    }
+
+    #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(1134));
     }
 }
