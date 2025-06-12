@@ -3,6 +3,9 @@ use std::str::FromStr;
 
 advent_of_code::solution!(12);
 
+const START: usize = 0;
+const END: usize = 1;
+
 #[derive(Debug, PartialEq)]
 struct CaveSystem {
     connections: [usize; usize::BITS as usize],
@@ -41,8 +44,7 @@ impl CaveSystem {
 
         self.neighbours(start)
             .filter_map(|neighbour| {
-                if neighbour == 0 {
-                    // never return to the start
+                if neighbour == START {
                     return None;
                 }
 
@@ -91,8 +93,8 @@ impl FromStr for CaveSystem {
         let mut sizes = 0;
 
         let mut keys = BTreeMap::new();
-        keys.insert("start", 0);
-        keys.insert("end", 1);
+        keys.insert("start", START);
+        keys.insert("end", END);
 
         for line in input.lines() {
             let Some((first, second)) = line.split_once('-') else {
@@ -143,14 +145,14 @@ impl FromStr for CaveSystem {
 pub fn part_one(input: &str) -> Option<usize> {
     CaveSystem::from_str(input)
         .ok()
-        .map(|system| system.connections_to(0, 1, 1))
+        .map(|system| system.connections_to(START, END, 1 << START))
 }
 
 #[must_use]
 pub fn part_two(input: &str) -> Option<usize> {
     CaveSystem::from_str(input)
         .ok()
-        .map(|system| system.connections_with_visiting_twice_to(0, 1, 1, false))
+        .map(|system| system.connections_with_visiting_twice_to(START, END, 1 << START, false))
 }
 
 #[cfg(test)]
@@ -159,8 +161,8 @@ mod tests {
 
     fn example_cave_system() -> CaveSystem {
         let mut connections = [0; usize::BITS as usize];
-        connections[0] = 304;
-        connections[1] = 68;
+        connections[START] = 304;
+        connections[END] = 68;
         connections[2] = 58;
         connections[3] = 884;
         connections[4] = 45;
@@ -188,8 +190,8 @@ mod tests {
     #[test]
     fn test_is_large_cave() {
         let system = example_cave_system();
-        assert_eq!(system.is_large_cave(0), false);
-        assert_eq!(system.is_large_cave(1), false);
+        assert_eq!(system.is_large_cave(START), false);
+        assert_eq!(system.is_large_cave(END), false);
         assert_eq!(system.is_large_cave(2), false);
         assert_eq!(system.is_large_cave(3), false);
         assert_eq!(system.is_large_cave(4), true);
@@ -204,7 +206,7 @@ mod tests {
     fn test_neighbours() {
         let system = example_cave_system();
 
-        let mut start = system.neighbours(0);
+        let mut start = system.neighbours(START);
         assert_eq!(start.next(), Some(4));
         assert_eq!(start.next(), Some(5));
         assert_eq!(start.next(), Some(8));
