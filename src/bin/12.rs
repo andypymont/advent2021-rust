@@ -28,6 +28,44 @@ impl CaveSystem {
             .sum()
     }
 
+    fn connections_with_visiting_twice_to(
+        &self,
+        start: usize,
+        end: usize,
+        visited: usize,
+        twice: bool,
+    ) -> usize {
+        if start == end {
+            return 1;
+        }
+
+        self.neighbours(start)
+            .filter_map(|neighbour| {
+                if neighbour == 0 {
+                    // never return to the start
+                    return None;
+                }
+
+                let large = self.is_large_cave(neighbour);
+                let already = visited & (1 << neighbour) != 0;
+                let now_visited = visited | (1 << neighbour);
+
+                match (large, already, twice) {
+                    (false, true, true) => None,
+                    (false, true, false) => Some(self.connections_with_visiting_twice_to(
+                        neighbour,
+                        end,
+                        now_visited,
+                        true,
+                    )),
+                    (false, false, _) | (true, _, _) => Some(
+                        self.connections_with_visiting_twice_to(neighbour, end, now_visited, twice),
+                    ),
+                }
+            })
+            .sum()
+    }
+
     const fn is_connected(&self, pos: usize, other: usize) -> bool {
         self.connections[pos] & (1 << other) != 0
     }
@@ -109,9 +147,10 @@ pub fn part_one(input: &str) -> Option<usize> {
 }
 
 #[must_use]
-#[allow(clippy::missing_const_for_fn)]
-pub fn part_two(_input: &str) -> Option<u64> {
-    None
+pub fn part_two(input: &str) -> Option<usize> {
+    CaveSystem::from_str(input)
+        .ok()
+        .map(|system| system.connections_with_visiting_twice_to(0, 1, 1, false))
 }
 
 #[cfg(test)]
@@ -190,6 +229,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(3509));
     }
 }
