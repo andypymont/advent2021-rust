@@ -3,8 +3,7 @@ use std::str::FromStr;
 
 advent_of_code::solution!(13);
 
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct Point(usize, usize);
+type Point = (usize, usize);
 
 #[derive(Debug, PartialEq)]
 enum Fold {
@@ -31,7 +30,7 @@ impl Fold {
             Self::X(_) => Some(dot.1),
             Self::Y(fold_line) => Self::move_coordinate(dot.1, *fold_line),
         }?;
-        Some(Point(x, y))
+        Some((x, y))
     }
 }
 
@@ -51,21 +50,6 @@ impl Paper {
 
 #[derive(Debug, PartialEq)]
 struct ParsePaperError;
-
-impl FromStr for Point {
-    type Err = ParsePaperError;
-
-    fn from_str(line: &str) -> Result<Self, Self::Err> {
-        let Some((x, y)) = line.split_once(',') else {
-            return Err(ParsePaperError);
-        };
-
-        let x = x.parse().map_err(|_| ParsePaperError)?;
-        let y = y.parse().map_err(|_| ParsePaperError)?;
-
-        Ok(Self(x, y))
-    }
-}
 
 impl FromStr for Fold {
     type Err = ParsePaperError;
@@ -96,8 +80,12 @@ impl FromStr for Paper {
 
         let mut dots = BTreeSet::new();
         for line in dots_str.lines() {
-            let point = Point::from_str(line)?;
-            dots.insert(point);
+            let Some((x, y)) = line.split_once(',') else {
+                return Err(ParsePaperError);
+            };
+            let x = x.parse().map_err(|_| ParsePaperError)?;
+            let y = y.parse().map_err(|_| ParsePaperError)?;
+            dots.insert((x, y));
         }
 
         let mut folds = Vec::new();
@@ -131,24 +119,24 @@ mod tests {
 
     fn example_paper() -> Paper {
         let mut dots = BTreeSet::new();
-        dots.insert(Point(6, 10));
-        dots.insert(Point(0, 14));
-        dots.insert(Point(9, 10));
-        dots.insert(Point(0, 3));
-        dots.insert(Point(10, 4));
-        dots.insert(Point(4, 11));
-        dots.insert(Point(6, 0));
-        dots.insert(Point(6, 12));
-        dots.insert(Point(4, 1));
-        dots.insert(Point(0, 13));
-        dots.insert(Point(10, 12));
-        dots.insert(Point(3, 4));
-        dots.insert(Point(3, 0));
-        dots.insert(Point(8, 4));
-        dots.insert(Point(1, 10));
-        dots.insert(Point(2, 14));
-        dots.insert(Point(8, 10));
-        dots.insert(Point(9, 0));
+        dots.insert((6, 10));
+        dots.insert((0, 14));
+        dots.insert((9, 10));
+        dots.insert((0, 3));
+        dots.insert((10, 4));
+        dots.insert((4, 11));
+        dots.insert((6, 0));
+        dots.insert((6, 12));
+        dots.insert((4, 1));
+        dots.insert((0, 13));
+        dots.insert((10, 12));
+        dots.insert((3, 4));
+        dots.insert((3, 0));
+        dots.insert((8, 4));
+        dots.insert((1, 10));
+        dots.insert((2, 14));
+        dots.insert((8, 10));
+        dots.insert((9, 0));
 
         Paper {
             dots,
@@ -168,25 +156,25 @@ mod tests {
     fn test_dots_after_fold() {
         let fold = Fold::Y(7);
         let mut expected = BTreeSet::new();
-        expected.insert(Point(0, 0));
-        expected.insert(Point(2, 0));
-        expected.insert(Point(3, 0));
-        expected.insert(Point(6, 0));
-        expected.insert(Point(9, 0));
-        expected.insert(Point(0, 1));
-        expected.insert(Point(4, 1));
-        expected.insert(Point(6, 2));
-        expected.insert(Point(10, 2));
-        expected.insert(Point(0, 3));
-        expected.insert(Point(4, 3));
-        expected.insert(Point(1, 4));
-        expected.insert(Point(3, 4));
-        expected.insert(Point(6, 4));
-        expected.insert(Point(8, 4));
-        expected.insert(Point(9, 4));
-        expected.insert(Point(10, 4));
+        expected.insert((0, 0));
+        expected.insert((2, 0));
+        expected.insert((3, 0));
+        expected.insert((6, 0));
+        expected.insert((9, 0));
+        expected.insert((0, 1));
+        expected.insert((4, 1));
+        expected.insert((6, 2));
+        expected.insert((10, 2));
+        expected.insert((0, 3));
+        expected.insert((4, 3));
+        expected.insert((1, 4));
+        expected.insert((3, 4));
+        expected.insert((6, 4));
+        expected.insert((8, 4));
+        expected.insert((9, 4));
+        expected.insert((10, 4));
 
-        assert_eq!(example_paper().dots_after_fold(&fold), expected,);
+        assert_eq!(example_paper().dots_after_fold(&fold), expected);
     }
 
     #[test]
