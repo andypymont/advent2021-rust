@@ -5,6 +5,10 @@ advent_of_code::solution!(13);
 
 type Point = (usize, usize);
 
+fn bottom_right(first: Point, second: Point) -> Point {
+    (first.0.max(second.0), first.1.max(second.1))
+}
+
 #[derive(Debug, PartialEq)]
 enum Fold {
     X(usize),
@@ -41,10 +45,41 @@ struct Paper {
 }
 
 impl Paper {
-    fn dots_after_fold(&self, fold: &Fold) -> BTreeSet<Point> {
+    fn dots_after(dots: &BTreeSet<Point>, fold: &Fold) -> BTreeSet<Point> {
         let mut after = BTreeSet::new();
-        after.extend(self.dots.iter().filter_map(|dot| fold.move_dot(dot)));
+        after.extend(dots.iter().filter_map(|dot| fold.move_dot(dot)));
         after
+    }
+
+    fn fold_once(&mut self) {
+        if let Some(fold) = self.folds.pop() {
+            self.dots = Self::dots_after(&self.dots, &fold);
+        }
+    }
+
+    fn output(dots: &BTreeSet<Point>) -> String {
+        let (max_x, max_y) = dots.iter().fold((0, 0), |acc, pt| bottom_right(acc, *pt));
+
+        let mut output = String::new();
+        for y in 0..=max_y {
+            for x in 0..=max_x {
+                let ch = if dots.contains(&(x, y)) { '█' } else { ' ' };
+                output.push(ch);
+            }
+            output.push('\n');
+        }
+
+        output
+    }
+
+    fn fold_and_output(mut self) -> String {
+        let mut dots = self.dots;
+
+        while let Some(fold) = self.folds.pop() {
+            dots = Self::dots_after(&dots, &fold);
+        }
+
+        Self::output(&dots)
     }
 }
 
@@ -89,7 +124,7 @@ impl FromStr for Paper {
         }
 
         let mut folds = Vec::new();
-        for line in folds_str.lines() {
+        for line in folds_str.lines().rev() {
             let fold = Fold::from_str(line)?;
             folds.push(fold);
         }
@@ -100,17 +135,15 @@ impl FromStr for Paper {
 
 #[must_use]
 pub fn part_one(input: &str) -> Option<usize> {
-    let paper = Paper::from_str(input).ok()?;
-    paper
-        .folds
-        .first()
-        .map(|fold| paper.dots_after_fold(fold).len())
+    Paper::from_str(input).ok().map(|mut paper| {
+        paper.fold_once();
+        paper.dots.len()
+    })
 }
 
 #[must_use]
-#[allow(clippy::missing_const_for_fn)]
-pub fn part_two(_input: &str) -> Option<u64> {
-    None
+pub fn part_two(input: &str) -> Option<String> {
+    Paper::from_str(input).ok().map(Paper::fold_and_output)
 }
 
 #[cfg(test)]
@@ -140,7 +173,34 @@ mod tests {
 
         Paper {
             dots,
-            folds: vec![Fold::Y(7), Fold::X(5)],
+            folds: vec![Fold::X(5), Fold::Y(7)],
+        }
+    }
+
+    fn example_paper_after_fold() -> Paper {
+        let mut dots = BTreeSet::new();
+
+        dots.insert((0, 0));
+        dots.insert((2, 0));
+        dots.insert((3, 0));
+        dots.insert((6, 0));
+        dots.insert((9, 0));
+        dots.insert((0, 1));
+        dots.insert((4, 1));
+        dots.insert((6, 2));
+        dots.insert((10, 2));
+        dots.insert((0, 3));
+        dots.insert((4, 3));
+        dots.insert((1, 4));
+        dots.insert((3, 4));
+        dots.insert((6, 4));
+        dots.insert((8, 4));
+        dots.insert((9, 4));
+        dots.insert((10, 4));
+
+        Paper {
+            dots,
+            folds: vec![Fold::X(5)],
         }
     }
 
@@ -153,28 +213,10 @@ mod tests {
     }
 
     #[test]
-    fn test_dots_after_fold() {
-        let fold = Fold::Y(7);
-        let mut expected = BTreeSet::new();
-        expected.insert((0, 0));
-        expected.insert((2, 0));
-        expected.insert((3, 0));
-        expected.insert((6, 0));
-        expected.insert((9, 0));
-        expected.insert((0, 1));
-        expected.insert((4, 1));
-        expected.insert((6, 2));
-        expected.insert((10, 2));
-        expected.insert((0, 3));
-        expected.insert((4, 3));
-        expected.insert((1, 4));
-        expected.insert((3, 4));
-        expected.insert((6, 4));
-        expected.insert((8, 4));
-        expected.insert((9, 4));
-        expected.insert((10, 4));
-
-        assert_eq!(example_paper().dots_after_fold(&fold), expected);
+    fn test_paper_fold_once() {
+        let mut paper = example_paper();
+        paper.fold_once();
+        assert_eq!(paper, example_paper_after_fold());
     }
 
     #[test]
@@ -183,9 +225,24 @@ mod tests {
         assert_eq!(result, Some(17));
     }
 
+    fn example_output() -> String {
+        let mut output = String::new();
+        output.push_str("█████\n");
+        output.push_str("█   █\n");
+        output.push_str("█   █\n");
+        output.push_str("█   █\n");
+        output.push_str("█████\n");
+        output
+    }
+
+    #[test]
+    fn test_fold_and_output() {
+        assert_eq!(example_paper().fold_and_output(), example_output(),);
+    }
+
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(example_output()));
     }
 }
