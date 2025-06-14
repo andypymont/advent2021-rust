@@ -1,66 +1,47 @@
-use std::collections::BTreeMap;
 use std::str::FromStr;
 
 advent_of_code::solution!(14);
 
 #[derive(Debug, PartialEq)]
-struct InsertionRule(char, char, char);
-
-#[derive(Debug, PartialEq)]
 struct Polymer {
-    template: Vec<char>,
-    rules: Vec<InsertionRule>,
+    template: Vec<usize>,
+    rules: [Option<usize>; 26 * 26],
 }
 
 impl Polymer {
-    fn char_counts(&self) -> BTreeMap<char, usize> {
-        let mut counts = BTreeMap::new();
-
-        for ch in &self.template {
-            counts
-                .entry(*ch)
-                .and_modify(|count| *count += 1)
-                .or_insert(1);
-        }
-
-        counts
-    }
-
     fn expand(&mut self) {
         let mut after = Vec::new();
 
-        let mut chars = self.template.iter();
+        let mut elements = self.template.iter();
 
-        let Some(mut left) = chars.next() else {
+        let Some(mut left) = elements.next() else {
             return;
         };
-        for right in chars {
-            after.push(*left);
-            if let Some(insert) = self.insertion_for_pair(*left, *right) {
-                after.push(insert);
-            }
 
+        for right in elements {
+            after.push(*left);
+            if let Some(insert) = self.rules.get((left * 26) + right).unwrap_or(&None) {
+                after.push(*insert);
+            }
             left = right;
         }
         after.push(*left);
         self.template = after;
     }
 
-    fn insertion_for_pair(&self, left: char, right: char) -> Option<char> {
-        self.rules
-            .iter()
-            .find(|rule| rule.0 == left && rule.1 == right)
-            .map(|rule| rule.2)
-    }
-
     fn least_and_most_common_counts(&self) -> (usize, usize) {
+        let mut counts = [0; 26 * 26];
+        for element in &self.template {
+            counts[*element] += 1;
+        }
+
         let mut least = usize::MAX;
         let mut most = 0;
-
-        let counts = self.char_counts();
-        for count in counts.values() {
-            least = least.min(*count);
-            most = most.max(*count);
+        for count in counts {
+            if count > 0 && count < least {
+                least = count;
+            }
+            most = most.max(count);
         }
 
         (least, most)
@@ -70,32 +51,43 @@ impl Polymer {
 #[derive(Debug, PartialEq)]
 struct ParsePolymerError;
 
-impl FromStr for InsertionRule {
-    type Err = ParsePolymerError;
-
-    fn from_str(line: &str) -> Result<Self, Self::Err> {
-        let (input, output) = line.split_once(" -> ").ok_or(ParsePolymerError)?;
-
-        let mut input = input.chars();
-        let left = input.next().ok_or(ParsePolymerError)?;
-        let right = input.next().ok_or(ParsePolymerError)?;
-        let output = output.chars().next().ok_or(ParsePolymerError)?;
-
-        Ok(Self(left, right, output))
-    }
+fn parse_element(character: char) -> Result<usize, ParsePolymerError> {
+    let lower = character.to_ascii_lowercase();
+    let digit = lower
+        .to_digit(36)
+        .map(|d| d - 10)
+        .ok_or(ParsePolymerError)?;
+    digit.try_into().map_err(|_| ParsePolymerError)
 }
 
 impl FromStr for Polymer {
     type Err = ParsePolymerError;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
-        let (template, rules_str) = input.split_once("\n\n").ok_or(ParsePolymerError)?;
-        let template = template.chars().collect();
+        let (template_str, rules_str) = input.split_once("\n\n").ok_or(ParsePolymerError)?;
 
-        let mut rules = Vec::new();
+        let mut template = Vec::new();
+        for ch in template_str.chars() {
+            let element = parse_element(ch)?;
+            template.push(element);
+        }
+
+        let mut rules = [None; 26 * 26];
         for line in rules_str.lines() {
-            let rule = InsertionRule::from_str(line)?;
-            rules.push(rule);
+            let (input, output) = line.split_once(" -> ").ok_or(ParsePolymerError)?;
+
+            let mut input = input.chars();
+
+            let left = input.next().ok_or(ParsePolymerError)?;
+            let left = parse_element(left)?;
+
+            let right = input.next().ok_or(ParsePolymerError)?;
+            let right = parse_element(right)?;
+
+            let output = output.chars().next().ok_or(ParsePolymerError)?;
+            let output = parse_element(output)?;
+
+            rules[(left * 26) + right] = Some(output);
         }
 
         Ok(Self { template, rules })
@@ -124,55 +116,65 @@ mod tests {
     use super::*;
 
     fn example_polymer() -> Polymer {
+        let b = 1;
+        let c = 2;
+        let h = 7;
+        let n = 13;
+
+        let mut rules = [None; 26 * 26];
+        rules[(c * 26) + h] = Some(b);
+        rules[(h * 26) + h] = Some(n);
+        rules[(c * 26) + b] = Some(h);
+        rules[(n * 26) + h] = Some(c);
+        rules[(h * 26) + b] = Some(c);
+        rules[(h * 26) + c] = Some(b);
+        rules[(h * 26) + n] = Some(c);
+        rules[(n * 26) + n] = Some(c);
+        rules[(b * 26) + h] = Some(h);
+        rules[(n * 26) + c] = Some(b);
+        rules[(n * 26) + b] = Some(b);
+        rules[(b * 26) + n] = Some(b);
+        rules[(b * 26) + b] = Some(n);
+        rules[(b * 26) + c] = Some(b);
+        rules[(c * 26) + c] = Some(n);
+        rules[(c * 26) + n] = Some(c);
+
         Polymer {
-            template: vec!['N', 'N', 'C', 'B'],
-            rules: vec![
-                InsertionRule('C', 'H', 'B'),
-                InsertionRule('H', 'H', 'N'),
-                InsertionRule('C', 'B', 'H'),
-                InsertionRule('N', 'H', 'C'),
-                InsertionRule('H', 'B', 'C'),
-                InsertionRule('H', 'C', 'B'),
-                InsertionRule('H', 'N', 'C'),
-                InsertionRule('N', 'N', 'C'),
-                InsertionRule('B', 'H', 'H'),
-                InsertionRule('N', 'C', 'B'),
-                InsertionRule('N', 'B', 'B'),
-                InsertionRule('B', 'N', 'B'),
-                InsertionRule('B', 'B', 'N'),
-                InsertionRule('B', 'C', 'B'),
-                InsertionRule('C', 'C', 'N'),
-                InsertionRule('C', 'N', 'C'),
-            ],
+            template: vec![n, n, c, b],
+            rules,
         }
     }
 
     fn example_polymer_after_four_steps() -> Polymer {
+        let b = 1;
+        let c = 2;
+        let h = 7;
+        let n = 13;
+
+        let mut rules = [None; 26 * 26];
+        rules[(c * 26) + h] = Some(b);
+        rules[(h * 26) + h] = Some(n);
+        rules[(c * 26) + b] = Some(h);
+        rules[(n * 26) + h] = Some(c);
+        rules[(h * 26) + b] = Some(c);
+        rules[(h * 26) + c] = Some(b);
+        rules[(h * 26) + n] = Some(c);
+        rules[(n * 26) + n] = Some(c);
+        rules[(b * 26) + h] = Some(h);
+        rules[(n * 26) + c] = Some(b);
+        rules[(n * 26) + b] = Some(b);
+        rules[(b * 26) + n] = Some(b);
+        rules[(b * 26) + b] = Some(n);
+        rules[(b * 26) + c] = Some(b);
+        rules[(c * 26) + c] = Some(n);
+        rules[(c * 26) + n] = Some(c);
+
         Polymer {
             template: vec![
-                'N', 'B', 'B', 'N', 'B', 'N', 'B', 'B', 'C', 'C', 'N', 'B', 'C', 'N', 'C', 'C',
-                'N', 'B', 'B', 'N', 'B', 'B', 'N', 'B', 'B', 'B', 'N', 'B', 'B', 'N', 'B', 'B',
-                'C', 'B', 'H', 'C', 'B', 'H', 'H', 'N', 'H', 'C', 'B', 'B', 'C', 'B', 'H', 'C',
-                'B',
+                n, b, b, n, b, n, b, b, c, c, n, b, c, n, c, c, n, b, b, n, b, b, n, b, b, b, n, b,
+                b, n, b, b, c, b, h, c, b, h, h, n, h, c, b, b, c, b, h, c, b,
             ],
-            rules: vec![
-                InsertionRule('C', 'H', 'B'),
-                InsertionRule('H', 'H', 'N'),
-                InsertionRule('C', 'B', 'H'),
-                InsertionRule('N', 'H', 'C'),
-                InsertionRule('H', 'B', 'C'),
-                InsertionRule('H', 'C', 'B'),
-                InsertionRule('H', 'N', 'C'),
-                InsertionRule('N', 'N', 'C'),
-                InsertionRule('B', 'H', 'H'),
-                InsertionRule('N', 'C', 'B'),
-                InsertionRule('N', 'B', 'B'),
-                InsertionRule('B', 'N', 'B'),
-                InsertionRule('B', 'B', 'N'),
-                InsertionRule('B', 'C', 'B'),
-                InsertionRule('C', 'C', 'N'),
-                InsertionRule('C', 'N', 'C'),
-            ],
+            rules,
         }
     }
 
@@ -186,39 +188,29 @@ mod tests {
 
     #[test]
     fn test_expand() {
+        let b = 1;
+        let c = 2;
+        let h = 7;
+        let n = 13;
+
         let mut polymer = example_polymer();
 
         polymer.expand();
-        assert_eq!(polymer.template, vec!['N', 'C', 'N', 'B', 'C', 'H', 'B']);
+        assert_eq!(polymer.template, vec![n, c, n, b, c, h, b]);
 
         polymer.expand();
         assert_eq!(
             polymer.template,
-            vec!['N', 'B', 'C', 'C', 'N', 'B', 'B', 'B', 'C', 'B', 'H', 'C', 'B'],
+            vec![n, b, c, c, n, b, b, b, c, b, h, c, b]
         );
     }
 
     #[test]
-    fn test_count_chars() {
-        let mut counts = BTreeMap::new();
-        counts.insert('N', 2);
-        counts.insert('C', 1);
-        counts.insert('B', 1);
-        assert_eq!(example_polymer().char_counts(), counts);
-
-        let mut counts = BTreeMap::new();
-        counts.insert('N', 11);
-        counts.insert('B', 23);
-        counts.insert('C', 10);
-        counts.insert('H', 5);
-        assert_eq!(example_polymer_after_four_steps().char_counts(), counts);
-    }
-
-    #[test]
     fn test_least_and_most_common_counts() {
+        assert_eq!(example_polymer().least_and_most_common_counts(), (1, 2),);
         assert_eq!(
             example_polymer_after_four_steps().least_and_most_common_counts(),
-            (5, 23)
+            (5, 23),
         );
     }
 
