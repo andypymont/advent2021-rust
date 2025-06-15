@@ -3,48 +3,48 @@ use std::str::FromStr;
 advent_of_code::solution!(14);
 
 #[derive(Debug, PartialEq)]
+struct InsertionRule(usize, usize, usize);
+
+#[derive(Debug, PartialEq)]
 struct Polymer {
-    template: Vec<usize>,
-    rules: [Option<usize>; 26 * 26],
+    counts: [usize; 26],
+    pairs: [usize; 26 * 26],
+    rules: Vec<InsertionRule>,
 }
 
 impl Polymer {
-    fn expand(&mut self) {
-        let mut after = Vec::new();
+    fn expand(&mut self, steps: usize) {
+        for _ in 0..steps {
+            let mut counts = self.counts;
+            let mut pairs = self.pairs;
 
-        let mut elements = self.template.iter();
+            for rule in &self.rules {
+                let pair = (rule.0 * 26) + rule.1;
+                let count = self.pairs[pair];
 
-        let Some(mut left) = elements.next() else {
-            return;
-        };
-
-        for right in elements {
-            after.push(*left);
-            if let Some(insert) = self.rules.get((left * 26) + right).unwrap_or(&None) {
-                after.push(*insert);
+                pairs[pair] -= count;
+                pairs[(rule.0 * 26) + rule.2] += count;
+                pairs[(rule.2 * 26) + rule.1] += count;
+                counts[rule.2] += count;
             }
-            left = right;
+
+            self.counts = counts;
+            self.pairs = pairs;
         }
-        after.push(*left);
-        self.template = after;
     }
 
-    fn least_and_most_common_counts(&self) -> (usize, usize) {
-        let mut counts = [0; 26 * 26];
-        for element in &self.template {
-            counts[*element] += 1;
-        }
+    fn check_sum(&self) -> Option<usize> {
+        let mut counts = self.counts.iter().filter(|c| c > &&0);
 
-        let mut least = usize::MAX;
-        let mut most = 0;
+        let mut min = counts.next()?;
+        let mut max = min;
+
         for count in counts {
-            if count > 0 && count < least {
-                least = count;
-            }
-            most = most.max(count);
+            min = min.min(count);
+            max = max.max(count);
         }
 
-        (least, most)
+        Some(max - min)
     }
 }
 
@@ -60,121 +60,149 @@ fn parse_element(character: char) -> Result<usize, ParsePolymerError> {
     digit.try_into().map_err(|_| ParsePolymerError)
 }
 
+impl FromStr for InsertionRule {
+    type Err = ParsePolymerError;
+
+    fn from_str(line: &str) -> Result<Self, Self::Err> {
+        let (input, output) = line.split_once(" -> ").ok_or(ParsePolymerError)?;
+
+        let mut input = input.chars();
+        let left = input.next().map_or(Err(ParsePolymerError), parse_element)?;
+        let right = input.next().map_or(Err(ParsePolymerError), parse_element)?;
+
+        let output = output
+            .chars()
+            .next()
+            .map_or(Err(ParsePolymerError), parse_element)?;
+
+        Ok(Self(left, right, output))
+    }
+}
+
 impl FromStr for Polymer {
     type Err = ParsePolymerError;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         let (template_str, rules_str) = input.split_once("\n\n").ok_or(ParsePolymerError)?;
 
-        let mut template = Vec::new();
+        let mut counts = [0; 26];
+        let mut pairs = [0; 26 * 26];
+        let mut prev = None;
         for ch in template_str.chars() {
             let element = parse_element(ch)?;
-            template.push(element);
+            counts[element] += 1;
+
+            if let Some(prev) = prev {
+                pairs[(prev * 26) + element] += 1;
+            }
+
+            prev = Some(element);
         }
 
-        let mut rules = [None; 26 * 26];
+        let mut rules = Vec::new();
         for line in rules_str.lines() {
-            let (input, output) = line.split_once(" -> ").ok_or(ParsePolymerError)?;
-
-            let mut input = input.chars();
-
-            let left = input.next().ok_or(ParsePolymerError)?;
-            let left = parse_element(left)?;
-
-            let right = input.next().ok_or(ParsePolymerError)?;
-            let right = parse_element(right)?;
-
-            let output = output.chars().next().ok_or(ParsePolymerError)?;
-            let output = parse_element(output)?;
-
-            rules[(left * 26) + right] = Some(output);
+            let rule = InsertionRule::from_str(line)?;
+            rules.push(rule);
         }
 
-        Ok(Self { template, rules })
+        Ok(Self {
+            counts,
+            pairs,
+            rules,
+        })
     }
 }
 
 #[must_use]
 pub fn part_one(input: &str) -> Option<usize> {
-    Polymer::from_str(input).ok().map(|mut polymer| {
-        for _ in 0..10 {
-            polymer.expand();
-        }
-        let (least, most) = polymer.least_and_most_common_counts();
-        most - least
+    Polymer::from_str(input).ok().and_then(|mut polymer| {
+        polymer.expand(10);
+        polymer.check_sum()
     })
 }
 
 #[must_use]
-#[allow(clippy::missing_const_for_fn)]
-pub fn part_two(_input: &str) -> Option<usize> {
-    None
+pub fn part_two(input: &str) -> Option<usize> {
+    Polymer::from_str(input).ok().and_then(|mut polymer| {
+        polymer.expand(40);
+        polymer.check_sum()
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn example_polymer() -> Polymer {
-        let b = 1;
-        let c = 2;
-        let h = 7;
-        let n = 13;
+    const B: usize = 1;
+    const C: usize = 2;
+    const H: usize = 7;
+    const N: usize = 13;
 
-        let mut rules = [None; 26 * 26];
-        rules[(c * 26) + h] = Some(b);
-        rules[(h * 26) + h] = Some(n);
-        rules[(c * 26) + b] = Some(h);
-        rules[(n * 26) + h] = Some(c);
-        rules[(h * 26) + b] = Some(c);
-        rules[(h * 26) + c] = Some(b);
-        rules[(h * 26) + n] = Some(c);
-        rules[(n * 26) + n] = Some(c);
-        rules[(b * 26) + h] = Some(h);
-        rules[(n * 26) + c] = Some(b);
-        rules[(n * 26) + b] = Some(b);
-        rules[(b * 26) + n] = Some(b);
-        rules[(b * 26) + b] = Some(n);
-        rules[(b * 26) + c] = Some(b);
-        rules[(c * 26) + c] = Some(n);
-        rules[(c * 26) + n] = Some(c);
+    fn example_rules() -> Vec<InsertionRule> {
+        vec![
+            InsertionRule(C, H, B),
+            InsertionRule(H, H, N),
+            InsertionRule(C, B, H),
+            InsertionRule(N, H, C),
+            InsertionRule(H, B, C),
+            InsertionRule(H, C, B),
+            InsertionRule(H, N, C),
+            InsertionRule(N, N, C),
+            InsertionRule(B, H, H),
+            InsertionRule(N, C, B),
+            InsertionRule(N, B, B),
+            InsertionRule(B, N, B),
+            InsertionRule(B, B, N),
+            InsertionRule(B, C, B),
+            InsertionRule(C, C, N),
+            InsertionRule(C, N, C),
+        ]
+    }
+
+    fn example_polymer() -> Polymer {
+        let mut counts = [0; 26];
+        counts[N] = 2;
+        counts[C] = 1;
+        counts[B] = 1;
+
+        let mut pairs = [0; 26 * 26];
+        pairs[(N * 26) + N] = 1;
+        pairs[(N * 26) + C] = 1;
+        pairs[(C * 26) + B] = 1;
 
         Polymer {
-            template: vec![n, n, c, b],
-            rules,
+            counts,
+            pairs,
+            rules: example_rules(),
         }
     }
 
     fn example_polymer_after_four_steps() -> Polymer {
-        let b = 1;
-        let c = 2;
-        let h = 7;
-        let n = 13;
+        let mut counts = [0; 26];
+        counts[N] = 11;
+        counts[B] = 23;
+        counts[C] = 10;
+        counts[H] = 5;
 
-        let mut rules = [None; 26 * 26];
-        rules[(c * 26) + h] = Some(b);
-        rules[(h * 26) + h] = Some(n);
-        rules[(c * 26) + b] = Some(h);
-        rules[(n * 26) + h] = Some(c);
-        rules[(h * 26) + b] = Some(c);
-        rules[(h * 26) + c] = Some(b);
-        rules[(h * 26) + n] = Some(c);
-        rules[(n * 26) + n] = Some(c);
-        rules[(b * 26) + h] = Some(h);
-        rules[(n * 26) + c] = Some(b);
-        rules[(n * 26) + b] = Some(b);
-        rules[(b * 26) + n] = Some(b);
-        rules[(b * 26) + b] = Some(n);
-        rules[(b * 26) + c] = Some(b);
-        rules[(c * 26) + c] = Some(n);
-        rules[(c * 26) + n] = Some(c);
+        let mut pairs = [0; 26 * 26];
+        pairs[(B * 26) + B] = 9;
+        pairs[(B * 26) + C] = 4;
+        pairs[(B * 26) + H] = 3;
+        pairs[(B * 26) + N] = 6;
+        pairs[(C * 26) + B] = 5;
+        pairs[(C * 26) + C] = 2;
+        pairs[(C * 26) + N] = 3;
+        pairs[(H * 26) + C] = 3;
+        pairs[(H * 26) + H] = 1;
+        pairs[(H * 26) + N] = 1;
+        pairs[(N * 26) + B] = 9;
+        pairs[(N * 26) + C] = 1;
+        pairs[(N * 26) + H] = 1;
 
         Polymer {
-            template: vec![
-                n, b, b, n, b, n, b, b, c, c, n, b, c, n, c, c, n, b, b, n, b, b, n, b, b, b, n, b,
-                b, n, b, b, c, b, h, c, b, h, h, n, h, c, b, b, c, b, h, c, b,
-            ],
-            rules,
+            counts,
+            pairs,
+            rules: example_rules(),
         }
     }
 
@@ -188,30 +216,15 @@ mod tests {
 
     #[test]
     fn test_expand() {
-        let b = 1;
-        let c = 2;
-        let h = 7;
-        let n = 13;
-
         let mut polymer = example_polymer();
-
-        polymer.expand();
-        assert_eq!(polymer.template, vec![n, c, n, b, c, h, b]);
-
-        polymer.expand();
-        assert_eq!(
-            polymer.template,
-            vec![n, b, c, c, n, b, b, b, c, b, h, c, b]
-        );
+        polymer.expand(4);
+        assert_eq!(polymer, example_polymer_after_four_steps());
     }
 
     #[test]
-    fn test_least_and_most_common_counts() {
-        assert_eq!(example_polymer().least_and_most_common_counts(), (1, 2),);
-        assert_eq!(
-            example_polymer_after_four_steps().least_and_most_common_counts(),
-            (5, 23),
-        );
+    fn test_check_sum() {
+        assert_eq!(example_polymer().check_sum(), Some(1));
+        assert_eq!(example_polymer_after_four_steps().check_sum(), Some(18));
     }
 
     #[test]
@@ -223,6 +236,6 @@ mod tests {
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(2_188_189_693_529));
     }
 }
