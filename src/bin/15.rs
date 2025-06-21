@@ -3,46 +3,12 @@ use std::str::FromStr;
 
 advent_of_code::solution!(15);
 
-const GRID_SIZE: usize = if cfg!(test) { 10 } else { 100 };
-
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Direction {
     North,
     East,
     South,
     West,
-}
-
-impl Direction {
-    const fn step_from(&self, position: usize) -> Option<usize> {
-        let row = position / GRID_SIZE;
-        let col = position % GRID_SIZE;
-
-        match self {
-            Self::North => position.checked_sub(GRID_SIZE),
-            Self::South => {
-                if (row + 1) >= GRID_SIZE {
-                    None
-                } else {
-                    Some(position + GRID_SIZE)
-                }
-            }
-            Self::East => {
-                if (col + 1) >= GRID_SIZE {
-                    None
-                } else {
-                    Some(position + 1)
-                }
-            }
-            Self::West => {
-                if col == 0 {
-                    None
-                } else {
-                    Some(position - 1)
-                }
-            }
-        }
-    }
 }
 
 const COMPASS: [Direction; 4] = [
@@ -54,30 +20,61 @@ const COMPASS: [Direction; 4] = [
 
 #[derive(Debug, PartialEq)]
 struct Grid {
+    size: usize,
     spaces: Vec<u32>,
 }
 
 impl Grid {
-    fn neighbours(position: usize) -> impl Iterator<Item = usize> {
+    const fn step(&self, position: usize, direction: Direction) -> Option<usize> {
+        let row = position / self.size;
+        let col = position % self.size;
+
+        match direction {
+            Direction::North => position.checked_sub(self.size),
+            Direction::South => {
+                if (row + 1) >= self.size {
+                    None
+                } else {
+                    Some(position + self.size)
+                }
+            }
+            Direction::East => {
+                if (col + 1) >= self.size {
+                    None
+                } else {
+                    Some(position + 1)
+                }
+            }
+            Direction::West => {
+                if col == 0 {
+                    None
+                } else {
+                    Some(position - 1)
+                }
+            }
+        }
+    }
+
+    fn neighbours(&self, position: usize) -> impl Iterator<Item = usize> + '_ {
         COMPASS
             .iter()
-            .filter_map(move |dir| dir.step_from(position))
+            .filter_map(move |dir| self.step(position, *dir))
     }
 
     fn lowest_risk_path(&self) -> u32 {
-        let mut best = vec![u32::MAX; GRID_SIZE * GRID_SIZE];
+        let mut best = vec![u32::MAX; self.size * self.size];
 
         let mut queue = BTreeSet::new();
         queue.insert((0, 0));
 
         while let Some((risk, position)) = queue.pop_first() {
-            if risk > best[position] {
+            if risk >= best[position] {
                 continue;
             }
 
             best[position] = risk;
 
-            for neighbour in Self::neighbours(position) {
+            for neighbour in self.neighbours(position) {
                 let risk = risk + self.spaces[neighbour];
                 if risk < best[neighbour] {
                     queue.insert((risk, neighbour));
@@ -85,7 +82,7 @@ impl Grid {
             }
         }
 
-        best[(GRID_SIZE * GRID_SIZE) - 1]
+        *best.last().unwrap_or(&0)
     }
 }
 
@@ -96,16 +93,18 @@ impl FromStr for Grid {
     type Err = ParseGridError;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
-        let mut spaces = vec![0; GRID_SIZE * GRID_SIZE];
+        let mut spaces = Vec::new();
+        let mut size = 0;
 
-        for (y, line) in input.lines().enumerate() {
+        for line in input.lines() {
             for (x, ch) in line.chars().enumerate() {
                 let risk = ch.to_digit(10).ok_or(ParseGridError)?;
-                spaces[(y * GRID_SIZE) + x] = risk;
+                size = size.max(x + 1);
+                spaces.push(risk);
             }
         }
 
-        Ok(Self { spaces })
+        Ok(Self { size, spaces })
     }
 }
 
@@ -129,6 +128,7 @@ mod tests {
 
     fn example_grid() -> Grid {
         Grid {
+            size: 10,
             spaces: vec![
                 1, 1, 6, 3, 7, 5, 1, 7, 4, 2, 1, 3, 8, 1, 3, 7, 3, 6, 7, 2, 2, 1, 3, 6, 5, 1, 1, 3,
                 2, 8, 3, 6, 9, 4, 9, 3, 1, 5, 6, 9, 7, 4, 6, 3, 4, 1, 7, 1, 1, 1, 1, 3, 1, 9, 1, 2,
