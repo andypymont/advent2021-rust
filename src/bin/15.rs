@@ -21,7 +21,7 @@ const COMPASS: [Direction; 4] = [
 #[derive(Debug, PartialEq)]
 struct Grid {
     size: usize,
-    spaces: Vec<u32>,
+    spaces: Vec<usize>,
 }
 
 impl Grid {
@@ -61,8 +61,8 @@ impl Grid {
             .filter_map(move |dir| self.step(position, *dir))
     }
 
-    fn lowest_risk_path(&self) -> u32 {
-        let mut best = vec![u32::MAX; self.size * self.size];
+    fn lowest_risk_path(&self) -> usize {
+        let mut best = vec![usize::MAX; self.size * self.size];
 
         let mut queue = BTreeSet::new();
         queue.insert((0, 0));
@@ -84,6 +84,35 @@ impl Grid {
 
         *best.last().unwrap_or(&0)
     }
+
+    fn expand(&self) -> Self {
+        let size = self.size * 5;
+        let mut spaces = vec![0; size * size];
+
+        for (position, risk) in self.spaces.iter().enumerate() {
+            let x = position % self.size;
+            let y = position / self.size;
+
+            for segment_x in 0..5 {
+                for segment_y in 0..5 {
+                    let risk = {
+                        let candidate = risk + segment_x + segment_y;
+                        if candidate > 9 {
+                            candidate - 9
+                        } else {
+                            candidate
+                        }
+                    };
+
+                    let x = (segment_x * self.size) + x;
+                    let y = (segment_y * self.size) + y;
+                    spaces[(y * size) + x] = risk;
+                }
+            }
+        }
+
+        Self { size, spaces }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -98,7 +127,10 @@ impl FromStr for Grid {
 
         for line in input.lines() {
             for (x, ch) in line.chars().enumerate() {
-                let risk = ch.to_digit(10).ok_or(ParseGridError)?;
+                let risk = ch
+                    .to_digit(10)
+                    .ok_or(ParseGridError)
+                    .and_then(|x| usize::try_from(x).map_err(|_| ParseGridError))?;
                 size = size.max(x + 1);
                 spaces.push(risk);
             }
@@ -109,7 +141,7 @@ impl FromStr for Grid {
 }
 
 #[must_use]
-pub fn part_one(input: &str) -> Option<u32> {
+pub fn part_one(input: &str) -> Option<usize> {
     Grid::from_str(input)
         .ok()
         .as_ref()
@@ -117,9 +149,13 @@ pub fn part_one(input: &str) -> Option<u32> {
 }
 
 #[must_use]
-#[allow(clippy::missing_const_for_fn)]
-pub fn part_two(_input: &str) -> Option<u32> {
-    None
+pub fn part_two(input: &str) -> Option<usize> {
+    Grid::from_str(input)
+        .ok()
+        .as_ref()
+        .map(Grid::expand)
+        .as_ref()
+        .map(Grid::lowest_risk_path)
 }
 
 #[cfg(test)]
@@ -153,8 +189,26 @@ mod tests {
     }
 
     #[test]
+    fn test_expand() {
+        let grid = Grid {
+            size: 2,
+            spaces: vec![1, 2, 3, 4],
+        };
+        let expanded = Grid {
+            size: 10,
+            spaces: vec![
+                1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 2, 3, 3, 4, 4, 5, 5, 6,
+                6, 7, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 5, 6, 6, 7, 7, 8,
+                8, 9, 9, 1, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 6, 7, 7, 8, 8, 9, 9, 1, 1, 2, 5, 6, 6, 7,
+                7, 8, 8, 9, 9, 1, 7, 8, 8, 9, 9, 1, 1, 2, 2, 3,
+            ],
+        };
+        assert_eq!(grid.expand(), expanded);
+    }
+
+    #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(315));
     }
 }
