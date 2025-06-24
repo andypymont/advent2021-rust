@@ -4,6 +4,17 @@ use std::str::FromStr;
 advent_of_code::solution!(16);
 
 #[derive(Debug, PartialEq)]
+enum Operation {
+    Sum,
+    Product,
+    Minimum,
+    Maximum,
+    GreaterThan,
+    LessThan,
+    EqualTo,
+}
+
+#[derive(Debug, PartialEq)]
 enum Packet {
     Literal {
         version: usize,
@@ -11,7 +22,7 @@ enum Packet {
     },
     Operator {
         version: usize,
-        type_id: usize,
+        operation: Operation,
         subpackets: Vec<Packet>,
     },
 }
@@ -22,11 +33,39 @@ impl Packet {
             Self::Literal { version, value: _ } => *version,
             Self::Operator {
                 version,
-                type_id: _,
+                operation: _,
                 subpackets,
             } => {
                 let inner: usize = subpackets.iter().map(Self::total_of_version_numbers).sum();
                 version + inner
+            }
+        }
+    }
+
+    fn get_value(&self) -> usize {
+        match self {
+            Self::Literal { version: _, value } => *value,
+            Self::Operator {
+                version: _,
+                operation,
+                subpackets,
+            } => {
+                let mut sp = subpackets.iter().map(Self::get_value);
+                match operation {
+                    Operation::Sum => sp.sum(),
+                    Operation::Product => sp.product(),
+                    Operation::Minimum => sp.min().unwrap_or(0),
+                    Operation::Maximum => sp.max().unwrap_or(0),
+                    Operation::GreaterThan => {
+                        usize::from(sp.next().unwrap_or(0) > sp.next().unwrap_or(0))
+                    }
+                    Operation::LessThan => {
+                        usize::from(sp.next().unwrap_or(0) < sp.next().unwrap_or(0))
+                    }
+                    Operation::EqualTo => {
+                        usize::from(sp.next().unwrap_or(0) == sp.next().unwrap_or(0))
+                    }
+                }
             }
         }
     }
@@ -106,9 +145,19 @@ impl PacketParser {
             }
         }
 
+        let operation = match type_id {
+            0 => Operation::Sum,
+            1 => Operation::Product,
+            2 => Operation::Minimum,
+            3 => Operation::Maximum,
+            5 => Operation::GreaterThan,
+            6 => Operation::LessThan,
+            _ => Operation::EqualTo,
+        };
+
         let packet = Packet::Operator {
             version,
-            type_id,
+            operation,
             subpackets,
         };
         let length = start - self.bits.len();
@@ -137,9 +186,8 @@ pub fn part_one(input: &str) -> Option<usize> {
 }
 
 #[must_use]
-#[allow(clippy::missing_const_for_fn)]
-pub fn part_two(_input: &str) -> Option<u64> {
-    None
+pub fn part_two(input: &str) -> Option<usize> {
+    Packet::from_str(input).ok().as_ref().map(Packet::get_value)
 }
 
 #[cfg(test)]
@@ -148,16 +196,20 @@ mod tests {
 
     fn example_packet() -> Packet {
         Packet::Operator {
-            version: 1,
-            type_id: 6,
+            version: 6,
+            operation: Operation::Maximum,
             subpackets: vec![
                 Packet::Literal {
-                    version: 6,
-                    value: 10,
+                    version: 0,
+                    value: 7,
                 },
                 Packet::Literal {
-                    version: 2,
-                    value: 20,
+                    version: 5,
+                    value: 8,
+                },
+                Packet::Literal {
+                    version: 0,
+                    value: 9,
                 },
             ],
         }
@@ -174,12 +226,12 @@ mod tests {
     #[test]
     fn test_part_one() {
         let result = part_one(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, Some(9));
+        assert_eq!(result, Some(11));
     }
 
     #[test]
     fn test_part_two() {
         let result = part_two(&advent_of_code::template::read_file("examples", DAY));
-        assert_eq!(result, None);
+        assert_eq!(result, Some(9));
     }
 }
